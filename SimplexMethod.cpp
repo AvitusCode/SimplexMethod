@@ -1,24 +1,27 @@
 //============================================================================
 // Name        : SimplexMethod.cpp
 // Author      : AvitusCode
-// Version     : 1.0
-// Copyright   : Your copyright notice
+// Version     : 1.2
+// Copyright   : free release
 // Description : Simplex method in C++
 //============================================================================
 
 #include <iostream>
 #include "Simplex.h"
 
-// Придумать множество тестов, исследовать при крайних случаях, разобраться в симплекс-методе, подготовить программу к исследованиям
+// Дописать программу для работы с консолью (придумать граматику для пользовательской настройки)
+// Написать cmake файл
+// Добавить print mode для fileReader
 
 int main(void) 
 {
-	data::inputdata dt;
-	data::fileReader(dt, "matrix.txt", sysparser::Mode::WITHPARAMS);
+	data::inputdata dt; // Создаем структуру для данных задачи
+	data::fileReader(dt, "matrix.txt", sysparser::Mode::WITHPARAMS); // заполняем структуру
 	
-	Simplex simplex("log.txt");
-	simplex.generate_plane(dt);
-	simplex.run();
+	Simplex* simplex = Simplex::generate_plane(dt, printMode::PRINT, "log.txt"); // генерируем симплекс метод
+	clearUserData(dt); // очищаем структуру
+	simplex->run(); // запускаем процесс решения
 
+	delete simplex; // освобождаем симплекс
 	return 0;
 }

@@ -62,8 +62,7 @@ namespace data
 	// Memory cleaner
 	void clearUserData(inputdata& dt)
 	{
-		for (auto& item : dt.system)
-		{
+		for (auto& item : dt.system){
 			item->vars.clear();
 		}
 

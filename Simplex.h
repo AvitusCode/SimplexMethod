@@ -8,30 +8,57 @@
 
 enum class result 
 {
+	ERROR,
 	good_solution, 
 	bad_solution, 
 	no_solution,
 	ceil_solution
 };
 
+enum class printMode
+{
+	PRINT,
+	NPRINT
+};
+
+// Реализовать паттерн закрытого объявления и инициализации
 class Simplex
 {
 public:
-	Simplex(std::string filename = "") : outFile(std::move(filename)) {};
 	Simplex(const Simplex&) = delete;
 	Simplex& operator=(const Simplex&) = delete;
 	
-	std::shared_ptr<Plan> generate_plane(data::inputdata&);
+	// Реализовать сингелтон
+	static Simplex* generate_plane(const data::inputdata& ud, const printMode& pm = printMode::PRINT, const std::string& filename = ""){
+		if (simplex == nullptr)
+		{
+			simplex = new (std::nothrow) Simplex(pm, filename);
+			if (simplex == nullptr){
+				// Critical error. Not enough memory
+				exit(-1);
+			}
+			simplex->generate(ud);
+		}
+		else{
+			return simplex;
+		}
+		
+		return simplex;
+	}
+	
 	result run();
 
 private:
+	Simplex(printMode pm, std::string filename = "") : pm_(std::move(pm)), outFile(std::move(filename)) {};
+	void generate(const data::inputdata& ud);
+	
 	bool checkThColumn(const std::shared_ptr<Plan>&, const std::shared_ptr<Plan>&) const;
 	result checkPlane(const std::shared_ptr<Plan>&) const;
 	void dumpToTableTxt(const std::shared_ptr<Plan>&, size_t iteration, result, std::ofstream& file) const;
 	void displayResult(const std::shared_ptr<Plan>&, size_t iteration, result) const;
 	
 	/*
-	 * Выставляем базисные значения
+	 * Выставляем индексы базисных переменных, определяем новые значения вектора свободных членов
 	 * 
 	 * */
 	
@@ -56,7 +83,7 @@ private:
 	void setTargetFunction(const std::shared_ptr<Plan>& source, std::shared_ptr<Plan>& target);
 
 	/*
-	 * Задаем значения последнего столбца симплекс таблицы
+	 * Задаем значения Theta функции
 	*/
 
 	void setThColumn(std::shared_ptr<Plan>&);
@@ -79,14 +106,10 @@ private:
 
 	void setAllowingMember(std::shared_ptr<Plan>&);
 
-	/*
-	 * Все элементы свободного столбца должны быть неотрицательны, иначе система не имеет решения
-	*/
-
-	result checkNegative(std::shared_ptr<Plan>&);
-
 private:
+	const printMode pm_;
 	const std::string outFile;
+	inline static Simplex* simplex = nullptr;
 	
 	std::shared_ptr<Plan> old_plane, new_plane;
 	size_t numOfSourceVars;

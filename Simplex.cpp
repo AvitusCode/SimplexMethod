@@ -6,9 +6,9 @@
 #include "Simplex.h"
 
 
-// TODO: В идеале необходимо сделать проверки на превышение типа double
+// TODO: *В идеале необходимо сделать проверки на превышение типа double
 
-std::shared_ptr<Plan> Simplex::generate_plane(data::inputdata& ud)
+void Simplex::generate(const data::inputdata& ud)
 {
 	size_t i = 0, j = 0;
 	std::shared_ptr<Plan> p;
@@ -53,21 +53,11 @@ std::shared_ptr<Plan> Simplex::generate_plane(data::inputdata& ud)
 	//для отладки
 	/*std::cout << p->varsFactors << std::endl;
 	std::cout << p->basisVars << std::endl;*/
-
-	result r;
-	if ((r = checkNegative(p)) == result::bad_solution)
-		return p;
-	else if (r == result::no_solution)
-		return nullptr;
-	else
-	{
-		setIndexOfLeavingColumn(p);
-		setThColumn(p);
-		setIndexOfLeavingRow(p);
-		setAllowingMember(p);
-	}
-
-	return p;
+	
+	setIndexOfLeavingColumn(p);
+	setThColumn(p);
+	setIndexOfLeavingRow(p);
+	setAllowingMember(p);
 }
 
 void closeFile(std::ofstream& file)
@@ -79,7 +69,6 @@ void closeFile(std::ofstream& file)
 result Simplex::run()
 {
 	static size_t i;
-	std::shared_ptr<Plan> t;
 	result r;
 	std::ofstream file(outFile);
 	
@@ -90,7 +79,11 @@ result Simplex::run()
 			if (result::good_solution == (r = checkPlane(new_plane)))
 			{
 				dumpToTableTxt(new_plane, i, r, file);
-				displayResult(new_plane, i, r);
+				
+				if (pm_ == printMode::PRINT){
+				    displayResult(new_plane, i, r);
+				}
+				
 				res = r;
 				closeFile(file);
 				return r;
@@ -101,7 +94,11 @@ result Simplex::run()
 				{
 					r = result::no_solution;
 					dumpToTableTxt(new_plane, i, r, file);
-					displayResult(new_plane, i, r);
+					
+					if (pm_ == printMode::PRINT){
+					    displayResult(new_plane, i, r);
+					}
+					
 					res = r;
 					closeFile(file);
 					return r;
@@ -117,68 +114,25 @@ result Simplex::run()
 			return result::no_solution;
 		}
 
-		i++;
-		t = old_plane; old_plane = new_plane; new_plane = t; // Swap elements
+		i++; // Swap plans and starting new iteration
+		old_plane.swap(new_plane);
 
 		setTargetFunction(old_plane, new_plane);
 		setBasisVars(old_plane, new_plane);
 		setIndexString(old_plane, new_plane);
 		setFactorsOfVars(old_plane, new_plane);
 
-		r = checkNegative(new_plane);
-		if (r == result::good_solution)
-		{
-			setIndexOfLeavingColumn(new_plane);
-			setThColumn(new_plane);
-			setIndexOfLeavingRow(new_plane);
-			setAllowingMember(new_plane);
-		}
-		else if (r == result::no_solution)
-		{
-			closeFile(file);
-			return r;
-		}
 		
+		setIndexOfLeavingColumn(new_plane);
+		setThColumn(new_plane);
+		setIndexOfLeavingRow(new_plane);
+		setAllowingMember(new_plane);
+	
 		res = result::bad_solution;
 	}
 }
 
-result Simplex::checkNegative(std::shared_ptr<Plan>& p)
-{
-	double max = 0;
-
-	for (size_t i = 0; i < p->basisVars.GetNumColumns(); i++)
-	{
-		if (p->basisVars.At(1, i) < 0 && std::fabs(max) < std::fabs(p->basisVars.At(1, i)))
-		{
-			max = p->basisVars.At(1, i);
-			p->indexOfLeavingRow = i;
-		}
-	}
-
-	if (max >= 0)
-		return result::good_solution;
-
-	max = 0;
-	for (size_t i = 0; i < p->varsFactors.GetNumColumns(); i++)
-	{
-		if (p->varsFactors.At(p->indexOfLeavingRow, i) < 0 && std::fabs(max) < std::fabs(p->varsFactors.At(p->indexOfLeavingRow, i)))
-		{
-			max = p->varsFactors.At(p->indexOfLeavingRow, i);
-			p->indexOfLeavingColumn = i;
-		}
-	}
-
-	if (max >= 0)
-		return result::no_solution;
-
-	Simplex::setThColumn(p);
-	Simplex::setAllowingMember(p);
-	return result::bad_solution;
-}
-
-// Если после деления свободных членов на разрешающий элемент - чилса отрицательны или нуль, то решения нет
-// Также нет решений, если вектор b не изменился?
+// Если после деления свободных членов на разрешающий элемент - чилса отрицательны (все) или ERROR, то решения нет
 bool Simplex::checkThColumn(const std::shared_ptr<Plan>& p, const std::shared_ptr<Plan>& old) const
 {
 	bool result = false, dopres = false;
@@ -189,10 +143,14 @@ bool Simplex::checkThColumn(const std::shared_ptr<Plan>& p, const std::shared_pt
 			break;
 		}
 
+	// Базисные коэффициенты не изменились (Произошла проблема Креко)?
 	for (size_t i = 0; i < old->basisVars.GetNumColumns(); i++)
 	{
 		if (p->basisVars.At(1, i) != old->basisVars.At(1, i))
+		{
 			dopres = true;
+			break;
+		}
 	}
 
 	return result && dopres;
@@ -250,6 +208,7 @@ void Simplex::setIndexOfLeavingColumn(std::shared_ptr<Plan>& p)
 }
 
 // Выставить индекс ведущей строки
+// TODO: Нужно учесть случай, когда в тета массиве имеется два одинаковых элемента, иначе мы не сможем найти решение
 void Simplex::setIndexOfLeavingRow(std::shared_ptr<Plan>& p)
 {
 	double minOfThColumn = p->thColumn[0];
@@ -331,16 +290,17 @@ void Simplex::setThColumn(std::shared_ptr<Plan>& p)
 {
 	for (size_t i = 0; i < p->thColumn.size(); i++)
 	{
-		if (p->varsFactors.At(i, p->indexOfLeavingColumn) == 0)
-			p->thColumn[i] = std::numeric_limits<double>::max();
-		else
+		if (std::fabs(p->varsFactors.At(i, p->indexOfLeavingColumn)) < 0.00000000001){
+			p->thColumn[i] = std::numeric_limits<double>::max(); // ОШАБКА! попытка деления на нуль!
+		}
+		else{
 		    p->thColumn[i] = p->basisVars.At(1, i) / p->varsFactors.At(i, p->indexOfLeavingColumn);
+		}
 	}
 }
 
 
 // Print some information
-
 void Simplex::displayResult(const std::shared_ptr<Plan>& p, size_t iteration, result r) const
 {
 	std::ostringstream ss;
@@ -406,6 +366,8 @@ void Simplex::dumpToTableTxt(const std::shared_ptr<Plan>& p, size_t iteration, r
 		buf << "Target function does not limit";
 		break;
 	case result::ceil_solution:
+		break;
+	case result::ERROR:
 		break;
 	}
 

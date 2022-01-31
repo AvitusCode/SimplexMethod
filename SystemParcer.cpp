@@ -44,7 +44,7 @@ namespace sysparser
 		as,          // число или параметр
 		es_c,        // число или знак выраж.
 		at_approach, // тип задачи
-		at_lim       // оконцание
+		at_lim       // окончание
 	};
 
 	enum class RC

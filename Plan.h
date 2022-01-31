@@ -7,18 +7,18 @@ struct Plan
 	 // Значение функции цели
 	double targetFunction;
 
-	 //Свободный столбец
+	//theta столбец для поиска разрешающего столбца
 	std::vector<double> thColumn;
 
-	//разрешающий элемент
+	//разрешающий элемент и его позиция в матрице
 	size_t indexOfLeavingRow;
 	size_t indexOfLeavingColumn;
 	double allowingMember;
 
-	std::vector<double> indexString; // Строка индексов
+	std::vector<double> indexString; // Коэфф. функции цели (индексная строка)
 
-	Matrix basisVars;   // Храним индексы базисных переменных и значения вектора свободных членов
-	Matrix varsFactors; // Коэффициенты системы ограничений
+	Matrix basisVars;   // Храним индексы базисных переменных и значения вектора своб членов
+	Matrix varsFactors; // Коэффициенты системы ограничений (a_ij)
 
 	Plan()
 	{
@@ -36,7 +36,6 @@ struct Plan
 		targetFunction = 0.0;
 
 		thColumn.resize(rows);
-		targetFunction = 0;
 		basisVars.Reset(2, rows);
 		varsFactors.Reset(rows, vars + rows);
 		indexString.resize(vars + rows, 0);

@@ -16,7 +16,6 @@
 
 namespace sysparser 
 {
-
     // тип данных пришедший посредством считывания строки (позволяет переключать состояние автомата)
 	enum class _type
 	{
@@ -207,11 +206,11 @@ namespace sysparser
 			{
 				tok.type = _type::num;
 				
-				if (i == 0 && sv[i] == '0'){
+				if (i == 0 && sv[i] == '0' && sv.size() > 1 &&  sv[i + 1] != '.'){
 					tok.num = 0;
 					i++;
 				}
-				else if (sv[i] == '0' && !isnum(sv[i - 1]) && isparam(sv[i + 1])){
+				else if (i >= 1 && i < sv.size() - 1 && sv[i] == '0' && !isnum(sv[i - 1]) && isparam(sv[i + 1])){
 					tok.num = 0;
 					i++;
 				}
@@ -598,10 +597,15 @@ namespace sysparser
 
 		for (auto it = eq.vars.cbegin(); it != eq.vars.cend(); it++) 
 		{
+			// Необходимо исправить!
 			if (it == eq.vars.cbegin()) 
 			{
-				if (it->number < 0 && fabs(it->number) == 1)
+				if (it->number < 0 && fabs(it->number) == 1){
 					ss << "-";
+				}
+				else if (fabs(it->number) != 1){
+					ss << it->number;
+				}
 			}
 			else
 			{
@@ -611,8 +615,9 @@ namespace sysparser
 					ss << "- ";
 			}
 			
-			if (fabs(it->number) != 1)
+			if (fabs(it->number) != 1 && it != eq.vars.cbegin()){
 				ss << fabs(it->number);
+			}
 			
 			ss << "x" << it->index << " ";
 		}

@@ -5,12 +5,46 @@
 
 #include "Simplex.h"
 
+//#define DEBUG
 
-// TODO: *В идеале необходимо сделать проверки на превышение типа double
+#ifdef DEBUG
+#include <algorithm>
+#include <iterator>
+#endif // DEBUG
+
+// Выражаем переменные искуственного базиса через основные переменные и исправляем функцию цели
+void Simplex::fixTargetFunction(const std::vector<size_t>& vecY)
+{
+	// TODO: поразмыслить над введением константы (Испробовано, все работает, но с исключениями)
+	M *= 100.0;
+	const bool minus = wayOfTargetFunction == sysparser::Task::MAX ? false : true;
+
+    #ifdef DEBUG
+	std::copy(new_plane->indexString.cbegin(), new_plane->indexString.cend(), std::ostream_iterator<double>(std::cout, " "));
+	std::cout << std::endl;
+    #endif // DEBUG
+
+	for (size_t i = 0; i < vecY.size(); i++)
+	{
+		if (vecY[i])
+		{
+			for (int j = static_cast<int>(new_plane->basisVars.At(0, i)) - 2; j >= 0; j--){
+				new_plane->indexString[j] += (2.0 * minus - 1.0) * (new_plane->varsFactors.At(i, j) * M);
+			}
+			new_plane->targetFunction += (2.0 * minus - 1.0) * (new_plane->basisVars.At(1, i));
+		}
+	}
+
+    #ifdef DEBUG
+	std::copy(new_plane->indexString.cbegin(), new_plane->indexString.cend(), std::ostream_iterator<double>(std::cout, " "));
+	std::cout << std::endl;
+    #endif // DEBUG
+
+	new_plane->targetFunction *= M;
+}
 
 void Simplex::generate(const data::inputdata& ud)
 {
-	size_t i = 0, j = 0;
 	std::shared_ptr<Plan> p;
 	
 	res = result::bad_solution;
@@ -20,40 +54,93 @@ void Simplex::generate(const data::inputdata& ud)
 	old_plane = std::make_shared<Plan>(numOfSourceVars, numOfSourceRow);
 	new_plane = p = std::make_shared<Plan>(numOfSourceVars, numOfSourceRow);
 
-	for(const auto& item : ud.system)
-	{
-		p->basisVars.At(0, i) = numOfSourceVars + i + 1;
-		p->basisVars.At(1, i++) = (item->sign == sysparser::Comparison::GreaterOrEqual || item->sign == sysparser::Comparison::Greater) ? -item->rval : item->rval;
-	}
-
-	i = 0;
 	for (const auto& edit : ud.func.vars){
-		p->indexString[i++] = edit.number * (-1);
+		M = edit.number > M ? edit.number : M; // Подбираем константу M. Она точно должна быть больше всех значений координат функции цели
+		p->indexString[edit.index - 1] = edit.number * (-1);
 	}
 
-	i = 0;
+	// Создадим вспомогательный массив для добавления еще одного базиса
+	std::vector<size_t> vecY(numOfSourceRow, 0);
+	
+	size_t i = 0, cBasis = 0;
 	for (const auto& item : ud.system)
 	{
-		j = 0;
-		for (const auto& edit : item->vars)
-		{
-			p->varsFactors.At(i, j) = edit.number;
-
-			if (item->sign == sysparser::Comparison::GreaterOrEqual || item->sign == sysparser::Comparison::Greater)
-				p->varsFactors.At(i, j) *= -1;
-
-			if (j < numOfSourceRow)
-			    p->varsFactors.At(i, numOfSourceVars + i) = 1;
-			
-			j++;
+		for (const auto& edit : item->vars){
+			p->varsFactors.At(i, edit.index - 1) = edit.number;
 		}
+
+		p->basisVars.At(1, i) = item->rval;
+
+		
+		switch (item->sign)
+		{
+		case sysparser::Comparison::LessOrEqual:
+			p->varsFactors.At(i, numOfSourceVars + cBasis) = 1;
+			vecY[i] = 0;
+			cBasis++;
+			break;
+		case sysparser::Comparison::Less:
+			p->varsFactors.At(i, numOfSourceVars + cBasis) = 1;
+			vecY[i] = 0;
+			cBasis++;
+			break;
+		case sysparser::Comparison::Equal:
+			p->varsFactors.At(i, numOfSourceVars + cBasis) = 0;
+			vecY[i] = 1;
+			break;
+		case sysparser::Comparison::GreaterOrEqual:
+			p->varsFactors.At(i, numOfSourceVars + cBasis) = -1;
+			vecY[i] = 1;
+			cBasis++;
+			break;
+		case sysparser::Comparison::Greater:
+			p->varsFactors.At(i, numOfSourceVars + cBasis) = -1;
+			vecY[i] = 1;
+			cBasis++;
+			break;
+		}
+		
 		i++;
 	}
+	
+	// Теперь сделаем послдений проход для добавления дополнительного базиса
+	size_t yBasis = cBasis;
+	size_t xBasis = numOfSourceVars + 1;
+	for (i = 0; i < vecY.size(); i++)
+	{
+		if (vecY[i])
+		{
+			if (p->varsFactors.GetNumColumns() <= numOfSourceVars + yBasis)
+			{
+				p->varsFactors.Resize(numOfSourceRow, numOfSourceVars + yBasis + 1);
+				p->indexString.resize(numOfSourceVars + yBasis + 1);
+				old_plane->varsFactors.Resize(numOfSourceRow, numOfSourceVars + yBasis + 1);
+				old_plane->indexString.resize(numOfSourceVars + yBasis + 1);
+			}
+
+			p->varsFactors.At(i, numOfSourceVars + yBasis) = 1;
+			p->basisVars.At(0, i) = numOfSourceVars + yBasis + 1;
+			yBasis++;
+
+			if (p->varsFactors.At(i, xBasis - 1) != 0.0) {
+				xBasis++;
+			}
+		}
+		else
+		{
+			p->basisVars.At(0, i) = xBasis++; 
+		}
+	}
+
+	// Исправляем функцию цели для табличного метода посредством добавления штрафных функций (если нужно)
+	fixTargetFunction(vecY);
 
 	//для отладки
-	/*std::cout << p->varsFactors << std::endl;
-	std::cout << p->basisVars << std::endl;*/
-	
+    #ifdef DEBUG
+	std::cout << p->varsFactors << std::endl;
+	std::cout << p->basisVars << std::endl;
+    #endif
+
 	setIndexOfLeavingColumn(p);
 	setThColumn(p);
 	setIndexOfLeavingRow(p);
@@ -108,7 +195,7 @@ result Simplex::run()
 			}
 		}
 
-		if (new_plane->allowingMember == 0 || std::fabs(new_plane->allowingMember) < 0.0000001)
+		if (new_plane->allowingMember == 0 || std::fabs(new_plane->allowingMember) < ZERO)
 		{
 			closeFile(file);
 			return result::no_solution;
@@ -135,25 +222,14 @@ result Simplex::run()
 // Если после деления свободных членов на разрешающий элемент - чилса отрицательны (все) или ERROR, то решения нет
 bool Simplex::checkThColumn(const std::shared_ptr<Plan>& p, const std::shared_ptr<Plan>& old) const
 {
-	bool result = false, dopres = false;
 	for (const auto& item : p->thColumn)
-		if (item > 0 && item != std::numeric_limits<double>::max())
-		{
-			result = true;
-			break;
-		}
-
-	// Базисные коэффициенты не изменились (Произошла проблема Креко)?
-	for (size_t i = 0; i < old->basisVars.GetNumColumns(); i++)
 	{
-		if (p->basisVars.At(1, i) != old->basisVars.At(1, i))
-		{
-			dopres = true;
-			break;
+		if (item > 0 && item != std::numeric_limits<double>::max()){
+			return true;
 		}
 	}
 
-	return result && dopres;
+	return false;
 }
 
 result Simplex::checkPlane(const std::shared_ptr<Plan>& p) const
@@ -189,19 +265,23 @@ result Simplex::checkPlane(const std::shared_ptr<Plan>& p) const
 	return result::good_solution;
 }
 
-// Выставить индекс ведущего столбца
+// Выставить индекс ведущего столбца (Для минимизации нужно выбрать Максимальный неотрицательный элемент, для задачи максимизации - Минимальный отрицательный
 void Simplex::setIndexOfLeavingColumn(std::shared_ptr<Plan>& p) 
 {
-	double minOfIndexString = p->indexString[0];
+	const bool what_task = wayOfTargetFunction == sysparser::Task::MAX ? true : false;
+	double mOfIndexString = what_task ? std::numeric_limits<double>::max() : std::numeric_limits<double>::min();
 	p->indexOfLeavingColumn = 0;
 
-	for (size_t i = 1; i < p->indexString.size(); i++) 
+	for (size_t i = 0; i < p->indexString.size(); i++) 
 	{
-		bool what_task = wayOfTargetFunction == sysparser::Task::MAX ? p->indexString[i] < 0 : p->indexString[i] > 0;
-
-		if ((what_task && (minOfIndexString > p->indexString[i])) || minOfIndexString == 0)
+		if ((what_task && (mOfIndexString > p->indexString[i]) && p->indexString[i] < 0) || mOfIndexString == 0)
 		{
-			minOfIndexString = p->indexString[i];
+			mOfIndexString = p->indexString[i];
+			p->indexOfLeavingColumn = i;
+		}
+		else if (!what_task && mOfIndexString < p->indexString[i] && p->indexString[i] > 0)
+		{
+			mOfIndexString = p->indexString[i];
 			p->indexOfLeavingColumn = i;
 		}
 	}
@@ -211,10 +291,10 @@ void Simplex::setIndexOfLeavingColumn(std::shared_ptr<Plan>& p)
 // TODO: Нужно учесть случай, когда в тета массиве имеется два одинаковых элемента, иначе мы не сможем найти решение
 void Simplex::setIndexOfLeavingRow(std::shared_ptr<Plan>& p)
 {
-	double minOfThColumn = p->thColumn[0];
+	double minOfThColumn = std::numeric_limits<double>::max();
 	p->indexOfLeavingRow = 0;
 
-	for (size_t i = 1; i < p->thColumn.size(); i++) 
+	for (size_t i = 0; i < p->thColumn.size(); i++) 
 	{
 		if ((minOfThColumn > p->thColumn[i] || minOfThColumn < 0) && p->thColumn[i] >= 0)
 		{
@@ -290,11 +370,21 @@ void Simplex::setThColumn(std::shared_ptr<Plan>& p)
 {
 	for (size_t i = 0; i < p->thColumn.size(); i++)
 	{
-		if (std::fabs(p->varsFactors.At(i, p->indexOfLeavingColumn)) < 0.00000000001){
+		if (std::fabs(p->varsFactors.At(i, p->indexOfLeavingColumn)) < ZERO){
 			p->thColumn[i] = std::numeric_limits<double>::max(); // ОШАБКА! попытка деления на нуль!
 		}
-		else{
-		    p->thColumn[i] = p->basisVars.At(1, i) / p->varsFactors.At(i, p->indexOfLeavingColumn);
+		else
+		{
+			// Данные проверки позволяют избежать зацикливания (большинства случаев). Также необходимо делить только в том случае, когда переменные 
+			// вектора ограничений и разрещающего столбца одного знака
+			if ((p->varsFactors.At(i, p->indexOfLeavingColumn) < 0 && p->basisVars.At(1, i) < 0) || 
+				(p->varsFactors.At(i, p->indexOfLeavingColumn) > 0 && p->basisVars.At(1, i) > 0) ||
+				(p->varsFactors.At(i, p->indexOfLeavingColumn) > 0 && std::fabs(p->basisVars.At(1, i)) < ZERO)){
+			    p->thColumn[i] = p->basisVars.At(1, i) / p->varsFactors.At(i, p->indexOfLeavingColumn);
+			}
+			else {
+			    p->thColumn[i] = std::numeric_limits<double>::max();
+			}
 		}
 	}
 }
@@ -335,19 +425,26 @@ void Simplex::dumpToTableTxt(const std::shared_ptr<Plan>& p, size_t iteration, r
 
 	for (i = 0; i < p->basisVars.GetNumColumns(); i++)
 	{
-		buf << "x" << std::setw(4) << std::left << std::fixed << std::setprecision(2) << p->basisVars.At(0, i) << "\t";
+		buf << "x" << std::setw(4) << std::left << std::fixed << std::setprecision(2) << p->basisVars.At(0, i) << ":\t";
 		buf << std::setw(5) << std::fixed << std::setprecision(2) << p->basisVars.At(1, i) << "\t";
 		
 		for (j = 0; j < p->varsFactors.GetNumColumns(); j++)
 			buf << std::setw(7) << std::fixed << std::setprecision(2) << p->varsFactors.At(i, j) << "	";
 		
 		if (r == result::bad_solution)
-			buf << p->thColumn[i];
+		{
+			if (p->thColumn[i] == std::numeric_limits<double>::max()){
+				buf << '-';
+			}
+			else{
+			    buf << p->thColumn[i];
+			}
+		}
 		
 		buf << "\n\n";
 	}
 
-	buf << "f(x)\t" << std::setw(5) << std::fixed << std::setprecision(2) << p->targetFunction << "\t";
+	buf << "f(x):\t" << std::setw(5) << std::fixed << std::setprecision(2) << p->targetFunction << "\t";
 
 	for (i = 0; i < p->indexString.size(); i++)
 		buf << std::setw(7) << std::fixed << std::setprecision(2) << p->indexString[i] << "\t";

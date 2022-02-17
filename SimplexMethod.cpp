@@ -1,7 +1,7 @@
 //============================================================================
 // Name        : SimplexMethod.cpp
 // Author      : AvitusCode
-// Version     : 1.2
+// Version     : 1.4
 // Copyright   : free release
 // Description : Simplex method in C++
 //============================================================================
@@ -16,7 +16,7 @@
 int main(void) 
 {
 	data::inputdata dt; // Создаем структуру для данных задачи
-	data::fileReader(dt, "matrix.txt", sysparser::Mode::WITHPARAMS); // заполняем структуру
+	data::fileReader(dt, "sys/matrixLab1D.txt", sysparser::Mode::WITHPARAMS); // заполняем структуру
 	
 	Simplex* simplex = Simplex::generate_plane(dt, printMode::PRINT, "log.txt"); // генерируем симплекс метод
 	clearUserData(dt); // очищаем структуру

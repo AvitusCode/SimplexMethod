@@ -49,8 +49,9 @@ public:
 	result run();
 
 private:
-	Simplex(printMode pm, std::string filename = "") : pm_(std::move(pm)), outFile(std::move(filename)) {};
+	Simplex(printMode pm, std::string filename = "") : pm_(std::move(pm)), outFile(std::move(filename)) { M = 0; };
 	void generate(const data::inputdata& ud);
+	void fixTargetFunction(const std::vector<size_t>& vecY);
 	
 	bool checkThColumn(const std::shared_ptr<Plan>&, const std::shared_ptr<Plan>&) const;
 	result checkPlane(const std::shared_ptr<Plan>&) const;
@@ -110,10 +111,12 @@ private:
 	const printMode pm_;
 	const std::string outFile;
 	inline static Simplex* simplex = nullptr;
+	inline static double ZERO = 0.00000000001;
 	
 	std::shared_ptr<Plan> old_plane, new_plane;
 	size_t numOfSourceVars;
 	size_t numOfSourceRow;
+	double M;
 	sysparser::Task wayOfTargetFunction;
 	result res;
 };
